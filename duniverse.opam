@@ -9,7 +9,7 @@ bug-reports: "https://github.com/avsm/duniverse/issues"
 tags: ["org:mirage" "org:ocamllabs"]
 available: [ ocaml-version >= "4.05.0"]
 depends: [
-  "jbuilder" {build & >="1.0+beta17"}
+  "dune"
   "bos"
   "cmdliner"
   "fmt"
@@ -20,8 +20,8 @@ depends: [
   "ezjsonm"
   "opam-core"
   "alcotest" {test}
-]
+ ]
 build: [
-  ["jbuilder" "subst" "-p" name "--name" name] {pinned}
-  ["jbuilder" "build" "-p" name "-j" jobs]
+  ["dune" "subst" "-p" name "--name" name] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
 ]

@@ -115,18 +115,18 @@ let classify_package ~package ~dev_repo ~archive () =
             | None -> err "dev-repo without host"
 
 let check_if_dune ~repo package =
-  Cmd.get_opam_depends ~repo (string_of_package package)
+  Exec.get_opam_depends ~repo (string_of_package package)
   >>| List.exists (fun l -> l = "jbuilder" || l = "dune")
 
 let get_opam_info ~repo ~pins package =
-  Cmd.get_opam_dev_repo ~repo (string_of_package package)
+  Exec.get_opam_dev_repo ~repo (string_of_package package)
   >>= fun dev_repo ->
-  Cmd.get_opam_archive_url ~repo (string_of_package package)
+  Exec.get_opam_archive_url ~repo (string_of_package package)
   >>= fun archive ->
   check_if_dune ~repo package
   >>= fun is_dune ->
   let dev_repo, tag = classify_package ~package ~dev_repo ~archive () in
-  let tag = if List.mem package.name pins then Some "master" else tag in
+  let tag = if List.mem_assoc package.name pins then Some "master" else tag in
   let is_dune =
     match (is_dune, dev_repo) with
     | true, `Duniverse_fork _ ->
@@ -180,11 +180,11 @@ let rec filter_duniverse_packages ~excludes pkgs =
 
 let calculate_duniverse ~repo file =
   load file
-  >>= fun {roots; excludes; pkgs; pins; opam_switch} ->
-  Cmd.run_opam_package_deps ~repo (List.map string_of_package roots)
+  >>= fun {roots; excludes; pkgs; pins; opam_switch; branch; remotes} ->
+  Exec.run_opam_package_deps ~repo (List.map string_of_package roots)
   >>| List.map split_opam_name_and_version
   >>| List.map (fun p ->
-          if List.mem p.name pins then {p with version= Some "dev"} else p )
+          if List.mem_assoc p.name pins then {p with version= Some "dev"} else p )
   >>= fun deps ->
   Logs.app (fun l -> l "Found %d opam dependencies." (List.length deps)) ;
   Logs.debug (fun l ->
@@ -195,7 +195,7 @@ let calculate_duniverse ~repo file =
         deps ) ;
   Logs.info (fun l ->
       l "Querying opam for the dev repos and Dune compatibility" ) ;
-  Cmd.map (fun p -> get_opam_info ~repo ~pins p) deps
+  Exec.map (fun p -> get_opam_info ~repo ~pins p) deps
   >>= fun pkgs ->
   check_packages_are_valid pkgs
   >>= fun () ->
@@ -207,7 +207,7 @@ let calculate_duniverse ~repo file =
   let num_dune = List.length is_dune_pkgs in
   let num_not_dune = List.length not_dune_pkgs in
   let num_total = List.length pkgs in
-  let t = {pkgs; roots; excludes; pins; opam_switch} in
+  let t = {pkgs; roots; excludes; pins; opam_switch; branch; remotes} in
   if num_not_dune > 0 then
     Logs.app (fun l ->
         l
@@ -226,17 +226,17 @@ let calculate_duniverse ~repo file =
   Logs.app (fun l -> l "Written %a (%d packages)." Fpath.pp file num_total) ;
   Ok ()
 
-let init_duniverse repo roots excludes pins opam_switch () =
+let init_duniverse repo branch roots excludes (pins:(string * string) list) opam_switch remotes () =
   let file = Fpath.(repo // Config.opam_lockfile) in
   Bos.OS.Dir.create Fpath.(repo // duniverse_dir)
   >>= fun _ ->
-  Cmd.init_local_opam_switch ~opam_switch ~repo ()
+  Exec.init_local_opam_switch ~opam_switch ~repo ~remotes ()
   >>= fun () ->
-  Cmd.(iter (add_opam_dev_pin ~repo) pins)
+  Exec.(iter (add_opam_dev_pin ~repo) pins)
   >>= fun () ->
   find_local_opam_packages repo
   >>= fun locals ->
-  Cmd.(iter (add_opam_local_pin ~repo) locals)
+  Exec.(iter (add_opam_local_pin ~repo) locals)
   >>= fun () ->
   let roots =
     match (roots, locals) with
@@ -275,5 +275,5 @@ let init_duniverse repo roots excludes pins opam_switch () =
     List.map split_opam_name_and_version (locals @ excludes) |> sort_uniq
   in
   let roots = List.map split_opam_name_and_version roots |> sort_uniq in
-  save file {pkgs= []; roots; excludes; pins; opam_switch}
+  save file {pkgs= []; roots; excludes; pins; opam_switch; branch; remotes}
   >>= fun () -> calculate_duniverse ~repo file
