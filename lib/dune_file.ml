@@ -29,7 +29,7 @@ module Lang = struct
 
   let is_stanza s = String.is_prefix ~prefix:"(lang " s
 
-  let duniverse_minimum_version = (1, 11)
+  let duniverse_minimum_version = (2,0)
 
   let stanza version = Format.asprintf "(lang dune %a)" pp_version version
 end
@@ -48,6 +48,115 @@ module Raw = struct
     ]
 
   let duniverse_minimum_lang = Lang.stanza Lang.duniverse_minimum_version
+end
+
+module Workspace = struct
+
+  let load_dune_workspace () =
+    match Sexplib.Sexp.load_sexps "dune-workspace" with
+    | v -> Ok v
+    | exception exn -> Error (`Msg (Printexc.to_string exn))
+
+  let dune_workspace_header () =
+    Sexplib.Sexp.(List [ Atom "lang"; Atom "dune"; Atom "2.5" ])
+
+  let path_frag =
+    let open Sexplib.Sexp in
+    let bootstrap_dir = Fpath.to_string (Config.bootstrap_bin_dir) in
+    [ Atom "PATH"; Atom bootstrap_dir; Atom ":standard" ]
+
+  let default_dune_workspace () =
+    let open Sexplib.Sexp in
+    List [ Atom "context";
+      List [ Atom "default";
+        List [ Atom "paths"; List path_frag ] ] ]
+
+  let update_dune_version =
+    let open Sexplib.Sexp in
+    function
+    | (List [ Atom "lang"; Atom "dune"; Atom v ] :: tl) as l -> begin
+        match Ordering.of_int (OpamVersionCompare.compare v "2.0") with
+        | Gt | Eq -> l
+        | Lt -> List [ Atom "lang"; Atom "dune"; Atom "2.0" ] :: tl
+    end
+    | v -> v
+
+  let update_default_dune_context l =
+    let bootstrap_dir = Fpath.to_string (Config.bootstrap_bin_dir) in
+    let open Sexplib.Sexp in
+    (* List [Atom "PATH"; Sexplib.Sexp.Atom "_ocaml/bin"; Atom ":standard"] *)
+    let update_PATH_entry l =
+      match l with
+      | List (Atom "PATH" :: paths) ->
+         let l =
+           if List.exists ~f:(fun e -> e = Atom bootstrap_dir) paths then Atom "PATH" :: paths else
+           (Atom "PATH") :: (Atom bootstrap_dir) :: paths
+         in
+         if List.exists ~f:(fun e -> e = Atom ":standard") l then List l else
+         List (l @ [ Atom ":standard"])
+      | _ -> l
+    in
+    let add_PATH_entry =
+      List [ Atom "PATH"; Atom bootstrap_dir; Atom ":standard" ]
+    in
+    (*      List [Atom "paths";
+     *        List [Atom "BARPATH"; Sexplib.Sexp.Atom "_x/y"];
+     *        List [Atom "PATH"; Sexplib.Sexp.Atom "_ocaml/bin"; Atom ":standard"]]]];
+     *)
+    let update_paths_entry l =
+      match l with
+      | List (Atom "paths" :: paths) ->
+          if List.exists ~f:(function List (Atom "PATH"::_) -> true |_ -> false) paths then
+            List (Atom "paths" :: (List.map ~f:update_PATH_entry paths))
+          else
+            List (Atom "paths" :: (add_PATH_entry :: paths))
+      | v -> v
+    in
+    let add_paths_entry = List [ Atom "paths"; add_PATH_entry ] in
+    (*  List [Atom "default";
+     *        List [Atom "root"; Atom "_ocaml/.opam"];
+     *        List [
+     *          Atom "paths";
+     *          List [Atom "BARPATH"; Atom "_x/y"];
+     *          List [Atom "PATH"; Atom "_ocaml/bin"; Atom ":standard"]]]] *)
+    let find_or_update_paths_entry l =
+      match l with
+      | List (Atom "default" :: fields) -> begin
+          if List.exists ~f:(function List ( Atom "paths" :: _ ) -> true | _ -> false) fields then
+              List (Atom "default" :: (List.map ~f:update_paths_entry fields))
+          else
+              List (Atom "default" :: (add_paths_entry :: fields))
+      end
+      | v -> v
+    in
+    List.map ~f:(function
+      | List (Atom "context" :: fields) ->
+          List (Atom "context" :: (List.map ~f:find_or_update_paths_entry fields))
+      | v -> v) l
+
+  let update_default_dune_contexts =
+    let open Sexplib.Sexp in
+     function
+     | ver::tl ->
+        let has_default_context =
+          List.exists ~f:(function List [Atom "context";
+            List (Atom "default"::_) ] -> true | _ -> false) tl in
+        if has_default_context then
+          ver :: (update_default_dune_context tl)
+        else
+          ver :: (tl @ [default_dune_workspace ()])
+     | [] -> []
+
+  let update_workspace_paths () =
+    match load_dune_workspace () with
+    | Error _ ->
+       Logs.app (fun l -> l "Creating dune-workspace file to use local tools");
+       Ok [dune_workspace_header (); default_dune_workspace ()]
+    | Ok s -> begin
+       update_dune_version s |> fun s ->
+       Ok (update_default_dune_contexts s)
+    end
+     
 end
 
 module Project = struct

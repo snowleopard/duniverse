@@ -3,10 +3,11 @@ open Astring
 module Cli_pull = Pull
 open Duniverse_lib
 
-let _update_dune_workspace () =
-  (* TODO *)
-  ()
-
+let update_dune_workspace () =
+  let open R.Infix in
+  Dune_file.Workspace.update_workspace_paths () >>= fun w ->
+  Bos.OS.File.write Fpath.(v "dune-workspace") (String.concat ~sep:"\n" (List.map Sexplib.Sexp.to_string_hum w))
+ 
 let is_ocaml_compatible ?ocamlc config =
   let ovs = List.map Ocaml_version.of_string_exn config.Duniverse.Config.ocaml_compilers in
   let latest = List.rev ovs |> List.hd in
@@ -35,8 +36,8 @@ let probe_system config =
   let open R.Infix in
   let in_opam_env =
     match Sys.getenv_opt "OPAM_SWITCH_PREFIX" with
+    | Some "" | None -> false
     | Some _ -> true
-    | None -> false
   in
   Osrelease.Distro.v () >>= function
   | `Windows `Cygwin ->
@@ -79,7 +80,6 @@ let probe_system config =
      * We are now using local switches  *)
 
 let install_local_ocaml repo config cache =
-   (* check for a local installed version first *)
    let local_ocamlc = Fpath.(repo // Config.bootstrap_dir / "bin" / "ocamlc") in
    match is_ocaml_compatible ~ocamlc:local_ocamlc config with
    | `Found ov ->
@@ -145,6 +145,7 @@ let install_local_tools repo opam_repo config cache strategy =
   (match strategy with
   | `Opam_env ->
     Common.Logs.app (fun l -> l "TODO create opam local switch as opam detected");
+    update_dune_workspace () >>= fun () ->
     exit 0
   | `System (`Ocaml ocaml_found, `Dune _dune_found) -> begin
       (if ocaml_found then begin
@@ -196,6 +197,7 @@ let tools (`Repo repo) (`Opam_repo opam_repo) (`No_cache no_cache) () =
   Duniverse.load ~file:duniverse_file >>= fun config -> (* TODO better error handling if no dune-get file *)
   (* Check for OCaml *)
   Common.get_cache ~no_cache >>= fun cache ->
+  update_dune_workspace () >>= fun () ->
   probe_system config.Duniverse.config >>= fun strategy ->
   add_bootstrap_to_path repo >>= fun () ->
   install_local_tools repo opam_repo config cache strategy

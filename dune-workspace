@@ -1,2 +1,5 @@
-(lang dune 1.1)
+(lang dune 2.0)
 (env (static (flags -cclib -static)))
+(context
+ (default (name _bar)
+  (paths (PATH _ocaml/bin :standard) (XPATH _ocaml/bin :standard))))

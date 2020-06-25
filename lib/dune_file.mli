@@ -32,6 +32,10 @@ module Lang : sig
   (** Tells whether the given dune-project file line is a lang stanza *)
 end
 
+module Workspace : sig
+  val update_workspace_paths : unit -> (Sexplib.Sexp.t list, Rresult.R.msg) result
+end
+
 module Project : sig
   val supported_ocaml_compilers : unit -> (Ocaml_version.t list, [> `Msg of string ]) result
   (** Enumerate the supported released OCaml compilers that match the specification
