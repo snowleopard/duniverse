@@ -17,10 +17,11 @@ let calculate ~opam_repo ~opam_files =
       (fun acc path -> 
         let name = Filename.basename path |> Filename.chop_extension |> OpamPackage.Name.of_string in
         let version =
-        let dir = Filename.dirname path in
-        let dev = OpamPackage.Version.of_string "dev" in
-        if dir = "." then dev else
-          match OpamPackage.of_string_opt dir with
+          let dir = Filename.dirname path in
+          let dev = OpamPackage.Version.of_string "zdev" in
+          if dir = "." then dev
+          else
+            match OpamPackage.of_string_opt dir with
             | Some { OpamPackage.version; _ } -> version
             | None -> dev
         in
