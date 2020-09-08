@@ -165,7 +165,8 @@ let get_opam_info ~get_opam_path packages =
             | Section (_, { section_kind = "url"; section_items; _ }) ->
                 Some
                   (List.filter_map
-                     (function Variable (_, "src", String (_, v)) -> Some v | _ -> None)
+                     (function
+                       | Variable (_, ("src" | "archive"), String (_, v)) -> Some v | _ -> None)
                      section_items)
             | _ -> None)
           file_contents
