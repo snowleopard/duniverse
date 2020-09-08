@@ -37,11 +37,15 @@ let strip_ext fname =
   to_string fname
 
 let find_local_opam_packages dir =
-  Bos.OS.Dir.exists dir >>= fun exists -> if not exists then Ok String.Map.empty else
-  Bos.OS.Dir.contents ~rel:true dir
-  >>| List.filter (Fpath.has_ext ".opam")
-  >>| List.map (fun path -> Fpath.(to_string (rem_ext path), dir // path))
-  >>| String.Map.of_list
+  Bos.OS.Dir.exists dir >>= fun exists ->
+  if not exists then Ok String.Map.empty
+  else
+    Bos.OS.Path.fold
+      ~elements:(`Sat (fun p -> Ok (Fpath.has_ext ".opam" p)))
+      ~traverse:(`Sat (fun p -> Ok (Fpath.to_string p <> "duniverse")))
+      (fun path acc -> Fpath.(to_string (rem_ext path), dir // path) :: acc)
+      [] [ dir ]
+    >>| String.Map.of_list
 
 let tag_from_archive archive =
   let uri = Uri.of_string archive in
