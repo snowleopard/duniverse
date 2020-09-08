@@ -43,7 +43,7 @@ let find_local_opam_packages dir =
     Bos.OS.Path.fold
       ~elements:(`Sat (fun p -> Ok (Fpath.has_ext ".opam" p)))
       ~traverse:(`Sat (fun p -> Ok (Fpath.to_string p <> "duniverse")))
-      (fun path acc -> Fpath.(to_string (rem_ext path), dir // path) :: acc)
+      (fun path acc -> Fpath.(basename (rem_ext path), dir // path) :: acc)
       [] [ dir ]
     >>| String.Map.of_list
 
